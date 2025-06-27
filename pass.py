@@ -14,8 +14,8 @@ def get_original_data():
         'k': 104, 'l': 82, 'm': 56, 'n': 80, 'o': 31, 'p': 66, 'q': 6, 'r': 93, 's': 81, 't': 91,
         'u': 48, 'v': 23, 'w': 96, 'x': 83, 'y': 90, 'z': 78,
         '1': 63, '2': 84, '3': 24, '4': 58, '5': 79, '6': 14, '7': 103, '8': 67, '9': 16, '0': 109,
-        '!': 9, '"': 99, '#': 59, '$': 94, '%': 74, '&amp;': 100, "'": 105, '(': 62, ')': 76, '*': 27,
-        '+': 92, ',': 5, '-': 18, '.': 36, '/': 73, ':': 97, ';': 86, '&lt;': 4, '=': 57, '&gt;': 106,
+        '!': 9, '"': 99, '#': 59, '$': 94, '%': 74, '&': 100, "'": 105, '(': 62, ')': 76, '*': 27,
+        '+': 92, ',': 5, '-': 18, '.': 36, '/': 73, ':': 97, ';': 86, '<': 4, '=': 57, '>': 106,
         '?': 40, '@': 95, '[': 25, '\\': 22, ']': 39, '^': 8, '_': 45, '`': 77, '{': 89, '|': 68,
         '}': 32, '~': 70
     }
@@ -41,15 +41,24 @@ def decode(code, reverse_data):
             decoded += "?"
     return decoded
 
-def load_data_file():
+def load_user_sheet(username):
     file_path = "encoded_data.xlsx"
     if os.path.exists(file_path):
-        return pd.read_excel(file_path, engine="openpyxl")
+        xls = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
+        return xls.get(username, pd.DataFrame(columns=["Platform", "Password"]))
     else:
         return pd.DataFrame(columns=["Platform", "Password"])
 
-def save_to_excel(df):
-    df.to_excel("encoded_data.xlsx", index=False)
+def save_user_sheet(username, df):
+    file_path = "encoded_data.xlsx"
+    if os.path.exists(file_path):
+        xls = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
+    else:
+        xls = {}
+    xls[username] = df
+    with pd.ExcelWriter(file_path, engine="openpyxl", mode="w") as writer:
+        for sheet_name, sheet_df in xls.items():
+            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 # ------------------ Streamlit App ------------------
 
@@ -57,7 +66,8 @@ st.set_page_config(page_title="Lock & Key", page_icon="🔐", layout="centered")
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🔐 Lock & Key</h1>", unsafe_allow_html=True)
 
 with st.expander("Enter PIN to Start", expanded=True):
-    st.markdown("### Enter your 3-digit PIN")
+    st.markdown("### Enter your 3-digit PIN and Username")
+    username = st.text_input("👤 Username")
     col1, col2, col3 = st.columns(3)
     with col1:
         a = st.number_input("Digit A", min_value=0, value=1)
@@ -67,9 +77,13 @@ with st.expander("Enter PIN to Start", expanded=True):
         c = st.number_input("Digit C", min_value=0, value=3)
 
     if st.button("Log-in"):
-        st.session_state["unlocked"] = True
-        st.session_state["data_dict"] = modify_data_dict(a, b, c)
-        st.success("Unlocked successfully!")
+        if username.strip() == "":
+            st.error("Please enter a valid username.")
+        else:
+            st.session_state["unlocked"] = True
+            st.session_state["username"] = username.strip()
+            st.session_state["data_dict"] = modify_data_dict(a, b, c)
+            st.success(f"Unlocked successfully for user: {username}!")
 
 if st.session_state.get("unlocked"):
     st.markdown("---")
@@ -81,15 +95,15 @@ if st.session_state.get("unlocked"):
         data_dict = st.session_state["data_dict"]
         encoded_platform = encode(platform, data_dict)
         encoded_password = encode(password, data_dict)
-        df = load_data_file()
+        df = load_user_sheet(st.session_state["username"])
         df.loc[len(df)] = [encoded_platform, encoded_password]
-        save_to_excel(df)
+        save_user_sheet(st.session_state["username"], df)
         st.success("✅ Saved successfully!")
 
     st.markdown("---")
     st.markdown("### 📋 View All Decoded Data")
     if st.button("👁️ Show All ID password"):
-        df = load_data_file()
+        df = load_user_sheet(st.session_state["username"])
         reverse_data = {v: k for k, v in st.session_state["data_dict"].items()}
         decoded_rows = []
         for index, row in df.iterrows():
